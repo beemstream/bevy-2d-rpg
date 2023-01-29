@@ -1,6 +1,6 @@
 use bevy::{prelude::*, sprite::Anchor};
 use bevy_rapier2d::prelude::{
-    ActiveEvents, Collider, GravityScale, RapierContext, Restitution, RigidBody, Velocity,
+    ActiveEvents, Collider, GravityScale, RapierContext, Restitution, RigidBody, Velocity, KinematicCharacterController,
 };
 
 use crate::tiled::Wall;
@@ -15,7 +15,8 @@ impl Plugin for SkillsPlugin {
             .add_system(spawn_fireball)
             .add_system(animate_fireball)
             .add_system(handle_cooldown)
-            .add_system(destroy_on_solid_wall);
+            .add_system(destroy_on_solid_wall)
+            .add_system(destroy_on_characters);
     }
 }
 
@@ -229,8 +230,22 @@ fn destroy_on_solid_wall(
         }
     }
 }
-// fn update_movement(mut controllers: Query<&mut KinematicCharacterController>) {
-//     for mut controller in controllers.iter_mut() {
-//         // controller.translation = Some(Vec2::new(0.0, -1.5));
-//     }
-// }
+
+fn destroy_on_characters(
+    mut commands: Commands,
+    rapier_context: Res<RapierContext>,
+    character_query: Query<(Entity, With<KinematicCharacterController>, With<ActiveEvents>)>,
+    fireball_collider_query: Query<(Entity, &Parent, With<Collider>, With<ActiveEvents>)>,
+) {
+    for (fireball, parent, _, _) in fireball_collider_query.iter() {
+        for (character, _, _) in character_query.iter() {
+            if let Some(contact_pair) = rapier_context.contact_pair(character, fireball) {
+                if contact_pair.has_any_active_contacts() {
+                    if commands.get_entity(parent.get()).is_some() {
+                        commands.entity(parent.get()).despawn_recursive();
+                    }
+                }
+            }
+        }
+    }
+}

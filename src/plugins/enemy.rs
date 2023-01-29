@@ -1,7 +1,7 @@
-use bevy::{prelude::*, render::camera::ScalingMode, sprite::Anchor};
-use bevy_rapier2d::prelude::{Collider, KinematicCharacterController, RigidBody};
-use rand::Rng;
 use super::player::FacingDirection;
+use bevy::{prelude::*, render::camera::ScalingMode, sprite::Anchor};
+use bevy_rapier2d::prelude::{Collider, KinematicCharacterController, RigidBody, ActiveEvents};
+use rand::Rng;
 
 pub struct EnemyPlugin;
 pub const TILE_SIZE: f32 = 16.0;
@@ -12,10 +12,10 @@ impl Plugin for EnemyPlugin {
             .add_startup_system(spawn_enemy)
             // .add_startup_system(spawn_physics)
             .add_system(random_walking);
-            // .add_system(animate_sprite)
-            // .add_system(handle_sprite_change)
-            // .add_system(handle_idle)
-            // .add_system(player_physics);
+        // .add_system(animate_sprite)
+        // .add_system(handle_sprite_change)
+        // .add_system(handle_idle)
+        // .add_system(player_physics);
     }
 }
 
@@ -37,16 +37,16 @@ pub fn load_spritesheet(
 #[derive(Debug, Component)]
 pub struct Enemy {
     facing_direction: FacingDirection,
-    finished_move: bool
+    finished_move: bool,
 }
 
 #[derive(Debug, Component)]
 pub struct WalkTime(Timer);
 
-pub fn spawn_enemy(
-    mut commands: Commands,
-    enemy_sheet: Res<EnemySpriteSheet>
-) {
+#[derive(Debug, Component)]
+pub struct WalkDirection(f32, f32);
+
+pub fn spawn_enemy(mut commands: Commands, enemy_sheet: Res<EnemySpriteSheet>) {
     let mut sprite = TextureAtlasSprite {
         index: 55,
         anchor: Anchor::Custom(Vec2::new(0.0, -0.2)),
@@ -69,31 +69,41 @@ pub fn spawn_enemy(
             RigidBody::KinematicPositionBased,
             Collider::cuboid(TILE_SIZE / 2.5, TILE_SIZE - 3.0),
         ))
-        .insert(Enemy { facing_direction: FacingDirection::Right, finished_move: false })
+        .insert(ActiveEvents::COLLISION_EVENTS)
+        .insert(Enemy {
+            facing_direction: FacingDirection::Right,
+            finished_move: false,
+        })
         .insert(KinematicCharacterController {
             ..Default::default()
         })
         .insert(Name::new("Enemy"))
-        .insert(WalkTime(Timer::from_seconds(4.0, TimerMode::Repeating)));
+        .insert(WalkTime(Timer::from_seconds(4.0, TimerMode::Repeating)))
+        .insert(WalkDirection(1.0, 0.0));
 }
 
 pub fn random_walking(
-    mut enemy_query: Query<(With<Enemy>, &mut KinematicCharacterController, &mut WalkTime)>,
-    time: Res<Time>
+    mut enemy_query: Query<(
+        With<Enemy>,
+        &mut WalkDirection,
+        &mut KinematicCharacterController,
+        &mut WalkTime,
+    )>,
+    time: Res<Time>,
 ) {
     let mut rng = rand::thread_rng();
-    let x = rng.gen_range(-10.0..10.0);
-    let y = rng.gen_range(-10.0..10.0);
-    let position = Vec2::new(x, y);
-    for (_, mut transform, mut walk_time) in enemy_query.iter_mut() {
+    for (_enemy, mut walk_direction, mut transform, mut walk_time) in enemy_query.iter_mut() {
         walk_time.0.tick(time.delta());
-        // if !enemy.finished_move {
-        //     transform.translation = Some(Vec2::new(1.0 * time.delta_seconds(), 0.0));
-        // }
+        transform.translation = Some(Vec2::new(
+            walk_direction.0 * time.delta_seconds(),
+            walk_direction.1 * time.delta_seconds(),
+        ));
 
         if walk_time.0.just_finished() {
-            println!("finsihed tick boi");
-            transform.translation = Some(position);
+            let x = rng.gen_range(-10.0..10.0);
+            let y = rng.gen_range(-10.0..10.0);
+            walk_direction.0 = x;
+            walk_direction.1 = y;
         }
     }
 }

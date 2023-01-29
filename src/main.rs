@@ -2,7 +2,7 @@ use bevy::{prelude::*, render::camera::ScalingMode};
 use bevy_ecs_tilemap::TilemapPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rapier2d::prelude::*;
-use plugins::{PlayerPlugin, SkillsPlugin, EnemyPlugin};
+use plugins::{EnemyPlugin, PlayerPlugin, SkillsPlugin};
 
 mod plugins;
 mod tiled;

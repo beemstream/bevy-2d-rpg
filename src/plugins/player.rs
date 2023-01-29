@@ -96,10 +96,7 @@ fn handle_sprite_change(
 #[derive(Debug, Component)]
 struct ColliderInfo;
 
-fn spawn_dungeon_player(
-    mut commands: Commands,
-    dungeon_sheet: Res<PlayerDungeonSheet>
-) {
+fn spawn_dungeon_player(mut commands: Commands, dungeon_sheet: Res<PlayerDungeonSheet>) {
     let mut sprite = TextureAtlasSprite {
         index: 0,
         anchor: Anchor::Custom(Vec2::new(0.0, -0.2)),
