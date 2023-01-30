@@ -18,8 +18,8 @@ use bevy::{
     asset::{AssetLoader, AssetPath, LoadedAsset},
     log,
     prelude::{
-        AddAsset, Added, AssetEvent, Assets, Bundle, Commands, Component, DespawnRecursiveExt,
-        Entity, EventReader, GlobalTransform, Handle, Image, Plugin, Query, Res, Transform,
+        AddAsset, Added, AssetEvent, Assets, Bundle, Commands, Component, Entity, EventReader,
+        GlobalTransform, Handle, Image, Plugin, Query, Res, Transform,
     },
     reflect::TypeUuid,
     transform::TransformBundle,
@@ -28,8 +28,7 @@ use bevy::{
 use bevy_ecs_tilemap::prelude::*;
 
 use anyhow::Result;
-use bevy_rapier2d::prelude::{ActiveEvents, Collider, Restitution, RigidBody};
-use tiled::PropertyValue;
+use bevy_rapier2d::prelude::{ActiveEvents, Collider, RigidBody};
 
 #[derive(Default)]
 pub struct TiledMapPlugin;
@@ -320,14 +319,25 @@ pub fn process_loaded_maps(
                                     _ => unreachable!()
                                 };
 
+                                // if layer_data.get_tile(mapped_x as i32, mapped_y as i32).is_none() {
+                                //     println!("none");
+                                // }
+
                                 let tile_pos = TilePos { x, y };
                                 let tile_entity = match layer_tile
                                     .get_tile()
                                     .unwrap()
                                     .properties
                                     .get("rigid")
+                                    .is_some()
+                                    || layer_tile
+                                        .get_tile()
+                                        .unwrap()
+                                        .properties
+                                        .get("is_hidden")
+                                        .is_some()
                                 {
-                                    Some(_) => {
+                                    true => {
                                         let transform = get_tilemap_center_transform(
                                             &map_size,
                                             &grid_size,
@@ -338,12 +348,36 @@ pub fn process_loaded_maps(
                                             y as f32 * 16 as f32,
                                             0.0,
                                         );
+                                        let texture = match layer_tile
+                                            .get_tile()
+                                            .unwrap()
+                                            .properties
+                                            .get("is_hidden")
+                                            .is_some()
+                                        {
+                                            true => 0,
+                                            false => texture_index,
+                                        };
+
+                                        let offset = match layer_tile
+                                            .get_tile()
+                                            .unwrap()
+                                            .properties
+                                            .get("offset")
+                                        {
+                                            Some(v) => match v {
+                                                tiled::PropertyValue::IntValue(int) => *int,
+                                                _ => 0,
+                                            },
+                                            None => 0,
+                                        };
+
                                         commands
                                             .spawn((
                                                 TileBundle {
                                                     position: tile_pos,
                                                     tilemap_id: TilemapId(layer_entity),
-                                                    texture_index: TileTextureIndex(texture_index),
+                                                    texture_index: TileTextureIndex(texture),
                                                     flip: TileFlip {
                                                         x: layer_tile_data.flip_h,
                                                         y: layer_tile_data.flip_v,
@@ -355,14 +389,15 @@ pub fn process_loaded_maps(
                                             ))
                                             .insert(RigidBody::Fixed)
                                             .insert(Collider::cuboid(
-                                                tileset.tile_width as f32 / 2 as f32,
+                                                (tileset.tile_width as f32 / 2 as f32)
+                                                    + offset as f32,
                                                 tileset.tile_height as f32 / 2 as f32,
                                             ))
                                             .insert(ActiveEvents::COLLISION_EVENTS)
                                             .insert(TransformBundle::from_transform(transform))
                                             .id()
                                     }
-                                    None => {
+                                    false => {
                                         {
                                             commands
                                                 // .spawn(RigidBody::Fixed)

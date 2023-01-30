@@ -1,7 +1,7 @@
 use bevy::{prelude::*, render::camera::ScalingMode, sprite::Anchor};
 use bevy_rapier2d::prelude::{Collider, KinematicCharacterController, RigidBody};
 
-use super::skills::Cooldown;
+use super::{skills::Cooldown, utils::AnimationTimer};
 
 pub struct PlayerPlugin;
 pub const TILE_SIZE: f32 = 16.0;
@@ -140,17 +140,7 @@ fn spawn_dungeon_player(mut commands: Commands, dungeon_sheet: Res<PlayerDungeon
         .insert(Cooldown(Timer::from_seconds(2.0, TimerMode::Repeating)));
 }
 
-// fn update_movement(mut controllers: Query<&mut KinematicCharacterController>) {
-//     for mut controller in controllers.iter_mut() {
-//         // controller.translation = Some(Vec2::new(0.0, -1.5));
-//     }
-// }
-
-fn player_physics(
-    _commands: Commands,
-    mut query: Query<(&Player, &ColliderInfo, &mut Transform)>,
-    // mut collider_query: Query<(&ColliderInfo, &mut Transform)>
-) {
+fn player_physics(_commands: Commands, mut query: Query<(&Player, &ColliderInfo, &mut Transform)>) {
     for (player, _, collider_transform) in query.iter_mut() {
         println!("{:?}", player);
         println!("{:?}", collider_transform);
@@ -205,9 +195,6 @@ fn handle_idle(mut player_query: Query<(&mut Player, &mut TextureAtlasSprite)>) 
         texture_atlas.index = 88;
     }
 }
-
-#[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
 
 fn animate_sprite(
     time: Res<Time>,

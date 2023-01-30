@@ -1,11 +1,16 @@
 use bevy::{prelude::*, sprite::Anchor};
 use bevy_rapier2d::prelude::{
-    ActiveEvents, Collider, GravityScale, RapierContext, Restitution, RigidBody, Velocity, KinematicCharacterController,
+    ActiveEvents, Collider, GravityScale, KinematicCharacterController, RapierContext, Restitution,
+    RigidBody, Velocity,
 };
 
 use crate::tiled::Wall;
 
-use super::player::{FacingDirection, Player};
+use super::{
+    character_stats::{Damage, Health},
+    player::{FacingDirection, Player},
+    utils::AnimationTimer,
+};
 
 pub struct SkillsPlugin;
 
@@ -36,9 +41,7 @@ fn load_fireball(
 }
 
 #[derive(Debug, Component)]
-struct FireBall {
-    facing_direction: FacingDirection,
-}
+struct FireBall;
 
 #[derive(Debug, Component)]
 struct FireBallCollider;
@@ -104,7 +107,8 @@ pub fn create_fireball(
                     0.0, 0.0, 0.1,
                 )));
         })
-        .insert(FireBall { facing_direction })
+        .insert(FireBall)
+        .insert(Damage(10.0))
         .insert(Cooldown(Timer::from_seconds(2.0, TimerMode::Once)))
         .insert(AnimationTimer(Timer::from_seconds(
             0.1,
@@ -115,9 +119,6 @@ pub fn create_fireball(
             angvel: 0.0,
         });
 }
-
-#[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
 
 fn animate_fireball(
     time: Res<Time>,
@@ -189,29 +190,6 @@ fn spawn_fireball(
     }
 }
 
-// fn move_based_on_facing_direction(
-//     mut fireball_query: Query<(&mut FireBall, &mut Transform, &Collider)>,
-// ) {
-//     for (fireball, mut transform, _) in fireball_query.iter_mut() {
-//         match fireball.facing_direction {
-//             super::player::FacingDirection::Up => transform.translation.y += 1.0,
-//             super::player::FacingDirection::Down => transform.translation.y -= 1.0,
-//             super::player::FacingDirection::Left => transform.translation.x -= 1.0,
-//             super::player::FacingDirection::Right => transform.translation.x += 1.0,
-//         }
-//     }
-// }
-
-// fn destroy_on_solid_wall(
-//     mut collision_events: Query<(&ActiveEvents, &Wall, &FireBall)>,
-// ) {
-//     for (event, _, _) in collision_events.iter() {
-//         println!("{:?}", event);
-//         // println!("{:?}", e);
-//         // println!("{:?}", e2);
-//     }
-// }
-
 fn destroy_on_solid_wall(
     mut commands: Commands,
     rapier_context: Res<RapierContext>,
@@ -234,14 +212,29 @@ fn destroy_on_solid_wall(
 fn destroy_on_characters(
     mut commands: Commands,
     rapier_context: Res<RapierContext>,
-    character_query: Query<(Entity, With<KinematicCharacterController>, With<ActiveEvents>)>,
-    fireball_collider_query: Query<(Entity, &Parent, With<Collider>, With<ActiveEvents>)>,
+    mut character_query: Query<(
+        Entity,
+        &mut Health,
+        With<KinematicCharacterController>,
+        With<ActiveEvents>,
+    )>,
+    collider_query: Query<(Entity, &Parent, With<Collider>, With<ActiveEvents>)>,
+    parent_query: Query<(Entity, &Damage)>,
 ) {
-    for (fireball, parent, _, _) in fireball_collider_query.iter() {
-        for (character, _, _) in character_query.iter() {
+    for (fireball, parent, _, _) in collider_query.iter() {
+        for (character, mut health, _, _) in character_query.iter_mut() {
             if let Some(contact_pair) = rapier_context.contact_pair(character, fireball) {
                 if contact_pair.has_any_active_contacts() {
                     if commands.get_entity(parent.get()).is_some() {
+                        for (found_entity, damage) in parent_query.iter() {
+                            if found_entity.index() == parent.get().index() {
+                                health.0 -= damage.0;
+
+                                if health.0 <= 0.0 {
+                                    commands.entity(character).despawn_recursive();
+                                }
+                            }
+                        }
                         commands.entity(parent.get()).despawn_recursive();
                     }
                 }
