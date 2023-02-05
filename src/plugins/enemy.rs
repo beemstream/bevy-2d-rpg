@@ -1,5 +1,5 @@
 use super::{
-    character_stats::{Damage, Health, MaxHealth, WalkSpeed},
+    character_stats::{Health, MaxHealth, WalkSpeed},
     health::{create_bar_sprite, Bar, HealthSpriteSheet},
     player::{FacingDirection, Player},
     utils::AnimationTimer,
@@ -7,7 +7,7 @@ use super::{
 use bevy::{prelude::*, sprite::Anchor};
 use bevy_rapier2d::prelude::{
     ActiveEvents, Collider, KinematicCharacterController, KinematicCharacterControllerOutput,
-    RapierContext, RigidBody,
+    RigidBody,
 };
 use rand::Rng;
 
@@ -20,7 +20,8 @@ impl Plugin for EnemyPlugin {
             .add_startup_system(spawn_enemies)
             .add_system(handle_alerted)
             .add_system(random_walking)
-            .add_system(animate_sprite);
+            .add_system(animate_sprite)
+            .add_system(handle_facing_direction);
     }
 }
 
@@ -126,8 +127,7 @@ pub fn spawn_enemy(
 
 pub fn random_walking(
     mut enemy_query: Query<(
-        Entity,
-        &mut Enemy,
+        With<Enemy>,
         &mut WalkDirection,
         &mut KinematicCharacterController,
         &mut WalkTime,
@@ -136,18 +136,16 @@ pub fn random_walking(
     time: Res<Time>,
 ) {
     let mut rng = rand::thread_rng();
-    for (entity, mut enemy, mut walk_direction, mut transform, mut walk_time, status) in
-        enemy_query.iter_mut()
-    {
+    for (_, mut walk_direction, mut transform, mut walk_time, status) in enemy_query.iter_mut() {
         walk_time.0.tick(time.delta());
 
         if status == &AggroStatus::Neutral {
             let x = walk_direction.0 * time.delta_seconds();
 
-            enemy.facing_direction = match x >= 0.0 {
-                true => FacingDirection::Right,
-                false => FacingDirection::Left,
-            };
+            //             enemy.facing_direction = match x >= 0.0 {
+            //                 true => FacingDirection::Right,
+            //                 false => FacingDirection::Left,
+            //             };
 
             transform.translation = Some(Vec2::new(x, walk_direction.1 * time.delta_seconds()));
 
@@ -158,6 +156,19 @@ pub fn random_walking(
                 walk_direction.1 = y;
             }
         }
+    }
+}
+
+pub fn handle_facing_direction(
+    mut enemy_query: Query<(&mut Enemy, &mut KinematicCharacterControllerOutput)>,
+) {
+    for (mut player, character_output) in enemy_query.iter_mut() {
+        let position = character_output.desired_translation;
+
+        player.facing_direction = match position.x >= 0.0 {
+            true => FacingDirection::Right,
+            false => FacingDirection::Left,
+        };
     }
 }
 
@@ -189,12 +200,19 @@ fn animate_sprite(
 }
 
 fn handle_alerted(
-    mut enemy_query: Query<(&AggroStatus, &Transform, &mut KinematicCharacterController, &WalkSpeed, With<Enemy>)>,
+    mut enemy_query: Query<(
+        &AggroStatus,
+        &Transform,
+        &mut KinematicCharacterController,
+        &WalkSpeed,
+        With<Enemy>,
+    )>,
     player_query: Query<(Entity, &Transform, With<Player>)>,
     time: Res<Time>,
 ) {
     for (player_entity, player_transform, _) in player_query.iter() {
-        for (status, enemy_transform, mut enemy_character, walk_speed, _) in enemy_query.iter_mut() {
+        for (status, enemy_transform, mut enemy_character, walk_speed, _) in enemy_query.iter_mut()
+        {
             if let AggroStatus::Alerted(player_alerted_entity) = status {
                 let enemy_pos = enemy_transform.translation;
 
@@ -203,12 +221,12 @@ fn handle_alerted(
 
                     let x = match (enemy_pos.x - player_pos.x).is_sign_negative() {
                         true => walk_speed.0,
-                        false => -(walk_speed.0)
+                        false => -(walk_speed.0),
                     };
 
                     let y = match (enemy_pos.y - player_pos.y).is_sign_negative() {
                         true => walk_speed.0,
-                        false => -(walk_speed.0)
+                        false => -(walk_speed.0),
                     };
 
                     enemy_character.translation = Some(Vec2::new(
