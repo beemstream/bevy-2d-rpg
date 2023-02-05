@@ -135,6 +135,7 @@ fn spawn_dungeon_player(mut commands: Commands, dungeon_sheet: Res<PlayerDungeon
             builder.spawn(spawn_camera());
         })
         .insert(KinematicCharacterController {
+            apply_impulse_to_dynamic_bodies: false,
             ..Default::default()
         })
         .insert(Cooldown(Timer::from_seconds(2.0, TimerMode::Repeating)));

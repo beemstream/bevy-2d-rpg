@@ -8,3 +8,6 @@ pub struct Health(pub f32);
 
 #[derive(Debug, Component)]
 pub struct MaxHealth(pub f32);
+
+#[derive(Debug, Component)]
+pub struct WalkSpeed(pub f32);

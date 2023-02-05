@@ -8,6 +8,7 @@ use crate::tiled::Wall;
 
 use super::{
     character_stats::{Damage, Health},
+    enemy::{AggroStatus, Enemy},
     player::{FacingDirection, Player},
     utils::AnimationTimer,
 };
@@ -27,6 +28,9 @@ impl Plugin for SkillsPlugin {
 
 #[derive(Debug, Resource)]
 pub struct FireSpriteSheet(Handle<TextureAtlas>);
+
+#[derive(Debug, Component)]
+pub struct SummonedBy(u32);
 
 fn load_fireball(
     mut commands: Commands,
@@ -66,6 +70,7 @@ pub fn create_fireball(
     rotation: Quat,
     facing_direction: FacingDirection,
     speed: f32,
+    player: &Entity,
 ) {
     let sprite = TextureAtlasSprite {
         index: 0,
@@ -117,7 +122,8 @@ pub fn create_fireball(
         .insert(Velocity {
             linvel: velocity,
             angvel: 0.0,
-        });
+        })
+        .insert(SummonedBy(player.index()));
 }
 
 fn animate_fireball(
@@ -142,11 +148,11 @@ fn animate_fireball(
 
 fn spawn_fireball(
     mut commands: Commands,
-    mut player_query: Query<(&mut Player, &Transform)>,
+    mut player_query: Query<(Entity, &mut Player, &Transform)>,
     keyboard: Res<Input<KeyCode>>,
     fire_sprite_sheet: Res<FireSpriteSheet>,
 ) {
-    for (mut player, transform) in player_query.iter_mut() {
+    for (player_entity, mut player, transform) in player_query.iter_mut() {
         let rotation = match player.facing_direction {
             super::player::FacingDirection::Up => Quat::from_rotation_z(0.0),
             super::player::FacingDirection::Down => Quat::from_rotation_z(3.14),
@@ -185,6 +191,7 @@ fn spawn_fireball(
                 rotation,
                 player.facing_direction.clone(),
                 speed,
+                &player_entity,
             );
         }
     }
@@ -219,24 +226,42 @@ fn destroy_on_characters(
         With<ActiveEvents>,
     )>,
     collider_query: Query<(Entity, &Parent, With<Collider>, With<ActiveEvents>)>,
-    parent_query: Query<(Entity, &Damage)>,
+    damage_query: Query<(Entity, &Damage, &SummonedBy)>,
+    attacker_query: Query<(Entity, &Player)>,
+    mut enemy_query: Query<(Entity, &mut AggroStatus)>,
 ) {
+    // let attacker = None;
     for (fireball, parent, _, _) in collider_query.iter() {
         for (character, mut health, _, _) in character_query.iter_mut() {
             if let Some(contact_pair) = rapier_context.contact_pair(character, fireball) {
-                if contact_pair.has_any_active_contacts() {
-                    if commands.get_entity(parent.get()).is_some() {
-                        for (found_entity, damage) in parent_query.iter() {
-                            if found_entity.index() == parent.get().index() {
-                                health.0 -= damage.0;
+                if contact_pair.has_any_active_contacts()
+                    && commands.get_entity(parent.get()).is_some()
+                {
+                    for (found_entity, damage, summoned_by) in damage_query.iter() {
+                        if found_entity.index() == parent.get().index() {
+                            for (attacker_entity, _) in attacker_query.iter() {
+                                for (enemy_entity, mut aggro_status) in enemy_query.iter_mut() {
+                                    if summoned_by.0 == attacker_entity.index()
+                                        && character.index() == enemy_entity.index()
+                                    {
+                                        if *aggro_status == AggroStatus::Neutral {
+                                            *aggro_status =
+                                                AggroStatus::Alerted(attacker_entity.index());
+                                        }
+                                    }
+                                }
+                            }
 
-                                if health.0 <= 0.0 {
+                            health.0 -= damage.0;
+
+                            if health.0 <= 0.0 {
+                                if commands.get_entity(character).is_some() {
                                     commands.entity(character).despawn_recursive();
                                 }
                             }
                         }
-                        commands.entity(parent.get()).despawn_recursive();
                     }
+                    commands.entity(parent.get()).despawn_recursive();
                 }
             }
         }

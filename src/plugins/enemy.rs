@@ -1,11 +1,14 @@
 use super::{
-    character_stats::{Health, MaxHealth},
-    health::{create_bar_sprite, spawn_health, Bar, HealthSpriteSheet},
-    player::FacingDirection,
+    character_stats::{Damage, Health, MaxHealth, WalkSpeed},
+    health::{create_bar_sprite, Bar, HealthSpriteSheet},
+    player::{FacingDirection, Player},
     utils::AnimationTimer,
 };
 use bevy::{prelude::*, sprite::Anchor};
-use bevy_rapier2d::prelude::{ActiveEvents, Collider, KinematicCharacterController, RigidBody};
+use bevy_rapier2d::prelude::{
+    ActiveEvents, Collider, KinematicCharacterController, KinematicCharacterControllerOutput,
+    RapierContext, RigidBody,
+};
 use rand::Rng;
 
 pub struct EnemyPlugin;
@@ -14,14 +17,10 @@ pub const TILE_SIZE: f32 = 16.0;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system_to_stage(StartupStage::PreStartup, load_spritesheet)
-            // .add_startup_system(spawn_enemy)
             .add_startup_system(spawn_enemies)
-            // .add_startup_system(spawn_physics)
+            .add_system(handle_alerted)
             .add_system(random_walking)
             .add_system(animate_sprite);
-        // .add_system(handle_sprite_change)
-        // .add_system(handle_idle)
-        // .add_system(player_physics);
     }
 }
 
@@ -46,6 +45,12 @@ pub struct Enemy {
     finished_move: bool,
 }
 
+#[derive(Debug, Component, PartialEq, Eq)]
+pub enum AggroStatus {
+    Alerted(u32),
+    Neutral,
+}
+
 #[derive(Debug, Component)]
 pub struct WalkTime(Timer);
 
@@ -57,7 +62,7 @@ pub fn spawn_enemies(
     enemy_sheet: Res<EnemySpriteSheet>,
     health_spritesheet: Res<HealthSpriteSheet>,
 ) {
-    for _ in 0..10 {
+    for _ in 0..5 {
         spawn_enemy(&mut commands, &enemy_sheet, &health_spritesheet);
     }
 }
@@ -93,7 +98,7 @@ pub fn spawn_enemy(
             Collider::cuboid(TILE_SIZE / 2.5, TILE_SIZE - 3.0),
         ))
         .with_children(|builder| {
-            for i in 5..28 {
+            for i in 5..29 {
                 let sprite_bundle = create_bar_sprite(i, &health_spritesheet);
                 builder.spawn(sprite_bundle).insert(Bar(i));
             }
@@ -106,6 +111,7 @@ pub fn spawn_enemy(
         .insert(KinematicCharacterController {
             ..Default::default()
         })
+        .insert(AggroStatus::Neutral)
         .insert(Name::new("Enemy"))
         .insert(AnimationTimer(Timer::from_seconds(
             0.1,
@@ -113,36 +119,44 @@ pub fn spawn_enemy(
         )))
         .insert(WalkTime(Timer::from_seconds(4.0, TimerMode::Repeating)))
         .insert(WalkDirection(1.0, 0.0))
+        .insert(WalkSpeed(5.0))
         .insert(Health(50.0))
         .insert(MaxHealth(50.0));
 }
 
 pub fn random_walking(
     mut enemy_query: Query<(
+        Entity,
         &mut Enemy,
         &mut WalkDirection,
         &mut KinematicCharacterController,
         &mut WalkTime,
+        &AggroStatus,
     )>,
     time: Res<Time>,
 ) {
     let mut rng = rand::thread_rng();
-    for (mut enemy, mut walk_direction, mut transform, mut walk_time) in enemy_query.iter_mut() {
+    for (entity, mut enemy, mut walk_direction, mut transform, mut walk_time, status) in
+        enemy_query.iter_mut()
+    {
         walk_time.0.tick(time.delta());
-        let x = walk_direction.0 * time.delta_seconds();
 
-        enemy.facing_direction = match x >= 0.0 {
-            true => FacingDirection::Right,
-            false => FacingDirection::Left,
-        };
+        if status == &AggroStatus::Neutral {
+            let x = walk_direction.0 * time.delta_seconds();
 
-        transform.translation = Some(Vec2::new(x, walk_direction.1 * time.delta_seconds()));
+            enemy.facing_direction = match x >= 0.0 {
+                true => FacingDirection::Right,
+                false => FacingDirection::Left,
+            };
 
-        if walk_time.0.just_finished() {
-            let x = rng.gen_range(-10.0..10.0);
-            let y = rng.gen_range(-10.0..10.0);
-            walk_direction.0 = x;
-            walk_direction.1 = y;
+            transform.translation = Some(Vec2::new(x, walk_direction.1 * time.delta_seconds()));
+
+            if walk_time.0.just_finished() {
+                let x = rng.gen_range(-10.0..10.0);
+                let y = rng.gen_range(-10.0..10.0);
+                walk_direction.0 = x;
+                walk_direction.1 = y;
+            }
         }
     }
 }
@@ -170,6 +184,39 @@ fn animate_sprite(
                 true => 55,
                 false => sprite.index + 1,
             };
+        }
+    }
+}
+
+fn handle_alerted(
+    mut enemy_query: Query<(&AggroStatus, &Transform, &mut KinematicCharacterController, &WalkSpeed, With<Enemy>)>,
+    player_query: Query<(Entity, &Transform, With<Player>)>,
+    time: Res<Time>,
+) {
+    for (player_entity, player_transform, _) in player_query.iter() {
+        for (status, enemy_transform, mut enemy_character, walk_speed, _) in enemy_query.iter_mut() {
+            if let AggroStatus::Alerted(player_alerted_entity) = status {
+                let enemy_pos = enemy_transform.translation;
+
+                if &player_entity.index() == player_alerted_entity {
+                    let player_pos = player_transform.translation;
+
+                    let x = match (enemy_pos.x - player_pos.x).is_sign_negative() {
+                        true => walk_speed.0,
+                        false => -(walk_speed.0)
+                    };
+
+                    let y = match (enemy_pos.y - player_pos.y).is_sign_negative() {
+                        true => walk_speed.0,
+                        false => -(walk_speed.0)
+                    };
+
+                    enemy_character.translation = Some(Vec2::new(
+                        x * time.delta_seconds(),
+                        y * time.delta_seconds(),
+                    ));
+                }
+            }
         }
     }
 }

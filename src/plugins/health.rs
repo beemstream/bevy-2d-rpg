@@ -55,7 +55,7 @@ pub fn handle_bars(
         let chunk = max_health.0 / 23.0;
 
         if max_health.0 != health.0 {
-            for i in (health.0 / chunk).round() as usize..24 {
+            for i in (health.0 / chunk).round() as usize..23 {
                 if bars.get(i - 1).is_some() {
                     if commands.get_entity(*bars[i - 1]).is_some() {
                         commands.entity(*bars[i - 1]).despawn();
